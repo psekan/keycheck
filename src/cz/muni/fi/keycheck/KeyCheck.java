@@ -6,8 +6,11 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -20,9 +23,11 @@ public class KeyCheck {
     private static final boolean CHECK_PRIME_DIFFERENCE = true;
     private static final boolean CHECK_PRIME_UNIQUENESS = true;
     private static final boolean CHECK_PRiVATE_EXPONENT = true;
+    private static final boolean CHECK_PRIME_STRENGTH = true;
 
     private static final int RADIX = 10;
     private static final int PRIME_CERTAINITY = 40;
+    private static final int SMOOTH_BOUND = 10000;
     private static final long STATUS_MESSAGE_AFTER = 20000000000L;
 
     private static BigInteger exponent;
@@ -39,6 +44,12 @@ public class KeyCheck {
     private static BigInteger minPrimeDifference = null;
     private static Set<BigInteger> primes = new HashSet<>();
     private static BigInteger minPrivateExponent = null;
+    private static List<BigInteger> primesUnderBound = getPrimesUnder(SMOOTH_BOUND);
+    private static long smoothNumberCount = 0;
+    private static long factoredNumberCount = 0;
+    private static long undividedNumberCount = 0;
+    private static Map<Integer, Long> smallFactorCounts = new HashMap<>();
+    private static Map<Integer, Long> smoothPartLengths = new HashMap<>();
 
     /**
      * @param args the command line arguments
@@ -48,6 +59,12 @@ public class KeyCheck {
             System.out.println("specify file name(s)");
             return;
         }
+        /*Random r = new SecureRandom();
+         for (int i = 0; i < 1000; i++) {
+         BigInteger n = new BigInteger(512, r);
+         checkSmoothness(n);
+         }
+        printStats();*/
         try {
             startTime = System.nanoTime();
             for (String filename : args) {
@@ -63,7 +80,7 @@ public class KeyCheck {
         try (BufferedReader reader = new BufferedReader(new FileReader(filename))) {
             System.out.println("Analysing file '" + filename + "'");
             lastStatusMessageTime = System.nanoTime();
-            for (int i = 0;; i++) {
+            for (;;) {
                 String line = reader.readLine();
                 if (line == null) {
                     break;
@@ -144,6 +161,9 @@ public class KeyCheck {
         if (CHECK_PRiVATE_EXPONENT) {
             checkPrivateExponent();
         }
+        if (CHECK_PRIME_STRENGTH) {
+            checkPrimeStrength();
+        }
         keyCount++;
         publicKeyLoaded = false;
         if (keyCount % 100 == 0 && System.nanoTime() - lastStatusMessageTime > STATUS_MESSAGE_AFTER) {
@@ -183,7 +203,7 @@ public class KeyCheck {
             minPrimeDifference = difference;
         }
     }
-    
+
     private static void checkPrimeUniqueness() {
         if (!primes.add(primeP)) {
             duplicitKeyCount++;
@@ -201,8 +221,70 @@ public class KeyCheck {
         if (minPrivateExponent == null || minPrivateExponent.compareTo(privateExponent) > 0) {
             minPrivateExponent = privateExponent;
         }
-    } 
-    
+    }
+
+    private static void checkPrimeStrength() {
+        BigInteger primeMinusOne = primeP.subtract(BigInteger.ONE);
+        checkSmoothness(primeMinusOne);
+        primeMinusOne = primeQ.subtract(BigInteger.ONE);
+        checkSmoothness(primeMinusOne);
+    }
+
+    private static void checkSmoothness(BigInteger n) {
+        int nSmallFactors = 0;
+        BigInteger smoothPart = BigInteger.ONE;
+        for (BigInteger prime : primesUnderBound) {
+            for (;;) {
+                if (n.mod(prime).equals(BigInteger.ZERO)) {
+                    n = n.divide(prime);
+                    nSmallFactors++;
+                    smoothPart = smoothPart.multiply(prime);
+                } else {
+                    break;
+                }
+            }
+        }
+        incrementMap(smallFactorCounts, nSmallFactors);
+        incrementMap(smoothPartLengths, smoothPart.bitLength());
+
+        if (nSmallFactors == 0) {
+            undividedNumberCount++;
+        }
+        if (n.equals(BigInteger.ONE)) {
+            smoothNumberCount++;
+        }
+        if (n.isProbablePrime(PRIME_CERTAINITY)) {
+            factoredNumberCount++;
+        }
+    }
+
+    private static long incrementMap(Map<Integer, Long> map, int value) {
+        long count = map.getOrDefault(value, Long.valueOf(0));
+        count++;
+        map.put(value, count);
+        return count;
+    }
+
+    private static List<BigInteger> getPrimesUnder(int bound) {
+        // Sieve of Eratosthenes
+        final int sqrt = (int) Math.sqrt(bound) + 1;
+        boolean[] isComposite = new boolean[bound];
+        for (int i = 2; i < sqrt; i++) {
+            if (!isComposite[i]) {
+                for (int j = i * i; j < bound; j += i) {
+                    isComposite[j] = true;
+                }
+            }
+        }
+        List<BigInteger> smallPrimes = new ArrayList<>();
+        for (int i = 2; i < bound; i++) {
+            if (!isComposite[i]) {
+                smallPrimes.add(BigInteger.valueOf(i));
+            }
+        }
+        return smallPrimes;
+    }
+
     private static void printStats() {
         System.out.println();
         long elapsedTime = (System.nanoTime() - startTime) / 1000000;
@@ -211,8 +293,6 @@ public class KeyCheck {
         if (CHECK_VALIDITY) {
             System.out.println(validKeyCount + " keys are valid, "
                     + (keyCount - validKeyCount) + " invalid");
-        } else {
-            System.out.println("Key validity not checked");
         }
         if (CHECK_PRIME_UNIQUENESS) {
             if (duplicitKeyCount == 0) {
@@ -220,16 +300,41 @@ public class KeyCheck {
             } else {
                 System.out.println(duplicitKeyCount + " primes are not unique");
             }
-        } else {
-            System.out.println("Prime uniqueness not checked");
         }
-        if (CHECK_PRiVATE_EXPONENT) {
+        if (CHECK_PRiVATE_EXPONENT && minPrivateExponent != null) {
             System.out.println("Minimum private exponent: " + minPrivateExponent.toString(RADIX)
                     + " (bitlength " + minPrivateExponent.bitLength() + ")");
         }
-        if (CHECK_PRIME_DIFFERENCE) {
+        if (CHECK_PRIME_DIFFERENCE && minPrimeDifference != null) {
             System.out.println("Minimum prime difference: " + minPrimeDifference.toString(RADIX)
                     + " (bitlength " + minPrimeDifference.bitLength() + ")");
+        }
+        if (CHECK_PRIME_STRENGTH) {
+            System.out.println("Frequency distribution for count of (p-1) factors less than " + SMOOTH_BOUND);
+            printMapChart(smallFactorCounts, keyCount * 2, 300);
+            System.out.println("Frequency distribution for bitlength of product"
+                    + " of all (p-1) factors less than " + SMOOTH_BOUND);
+            printMapChart(smoothPartLengths, keyCount * 2, 300);
+            System.out.println(smoothNumberCount + " (p-1) numbers are " + SMOOTH_BOUND + "-smooth, "
+                    + factoredNumberCount + " have only one bigger factor, "
+                    + undividedNumberCount + " have no factors under " + SMOOTH_BOUND);
+        }
+    }
+
+    private static void printMapChart(Map<Integer, Long> map, long size, int symbols) {
+        int maxKey = Collections.max(map.keySet());
+        for (int i = 0; i <= maxKey; i++) {
+            System.out.format("%3d: ", i);
+            long value = map.getOrDefault(i, Long.valueOf(0));
+            int width = (int) (value * symbols / size);
+            if (width == 0 && value != 0) {
+                System.out.print(".");
+            }
+            for (int j = 0; j < width; j++) {
+                System.out.print("*");
+            }
+            double percentage = 100 * value / (double) size;
+            System.out.format(" %d (%.3f %%)\n", value, percentage);
         }
     }
 }
