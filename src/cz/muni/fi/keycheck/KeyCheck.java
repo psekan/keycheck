@@ -31,10 +31,7 @@ public class KeyCheck {
     private static final int SMOOTH_BOUND = 10000;
     private static final long STATUS_MESSAGE_AFTER = 20000000000L;
 
-    private static BigInteger exponent;
-    private static BigInteger modulus;
-    private static BigInteger primeP;
-    private static BigInteger primeQ;
+    //private static Params param = new Params();
     private static BigInteger prevPrimeP;
     private static BigInteger prevPrimeQ;
     private static BigInteger prevPrevPrimeP;
@@ -96,13 +93,14 @@ public class KeyCheck {
                 if (tuple.length != 2) {
                     continue;
                 }
+                Params params = new Params();
                 String value = tuple[1].replaceAll("\\s", "");
                 switch (tuple[0]) {
                     case "PUBL":
-                        readPublicKey(value);
+                        readPublicKey(value, params);
                         break;
                     case "PRIV":
-                        readPrivateKey(value);
+                        readPrivateKey(value, params);
                         break;
                 }
             }
@@ -111,17 +109,17 @@ public class KeyCheck {
         }
     }
 
-    private static void readPublicKey(String value) throws IOException {
+    private static void readPublicKey(String value, Params params) throws IOException {
         BigInteger[] values = parseTlv(value);
         if (values.length != 2) {
             throw new IOException("Public key " + value + " not composed from 2 values");
         }
-        exponent = values[0];
-        modulus = values[1];
+        params.setExponent(values[0]);
+        params.setModulus(values[1]);
         publicKeyLoaded = true;
     }
 
-    private static void readPrivateKey(String value) throws IOException {
+    private static void readPrivateKey(String value, Params params) throws IOException {
         if (!publicKeyLoaded) {
             throw new IOException("Loading private key " + value + "  while public key not loaded");
         }
@@ -130,12 +128,12 @@ public class KeyCheck {
             throw new IOException("Private key " + value + "  not composed from 2 values");
         }
         prevPrevPrimeP = prevPrimeP;
-        prevPrimeP = primeP;
-        primeP = values[0];
+        prevPrimeP = params.getP();
+        params.setP(values[0]);
         prevPrevPrimeQ = prevPrimeQ;
-        prevPrimeQ = primeQ;
-        primeQ = values[1];
-        process();
+        prevPrimeQ = params.getQ();
+        params.setQ(values[1]);
+        process(params);
     }
 
     private static BigInteger[] parseTlv(String values) throws IOException {
@@ -159,25 +157,28 @@ public class KeyCheck {
         return result.toArray(new BigInteger[result.size()]);
     }
 
-    private static void process() {
+    private static void process(Params params) {
         if (CHECK_VALIDITY) {
-            checkValidity();
+            if (params.isValid()) {
+                validKeyCount++;
+            }
         }
         if (CHECK_PRIME_DIFFERENCE) {
-            checkPrimeDifference();
+            checkPrimeDifference(params);
         }
         if (CHECK_PRIME_UNIQUENESS) {
-            checkPrimeUniqueness();
+            checkPrimeUniqueness(params);
         }
         if (CHECK_PRiVATE_EXPONENT) {
-            checkPrivateExponent();
+            checkPrivateExponent(params);
         }
         if (CHECK_PRIME_STRENGTH) {
-            checkPrimeStrength();
+            checkSmoothness(params.getP().subtract(BigInteger.ONE));
+            checkSmoothness(params.getQ().subtract(BigInteger.ONE));
         }
         if (CHECK_ORDER_RANDOMNESS) {
-            checkTurningPoints();
-            checkTrend();
+            checkTurningPoints(params);
+            checkTrend(params);
         }
         keyCount++;
         publicKeyLoaded = false;
@@ -187,62 +188,29 @@ public class KeyCheck {
         }
     }
 
-    private static void checkValidity() {
-        boolean isValid = true;
-        if (!primeP.isProbablePrime(PRIME_CERTAINITY)) {
-            isValid = false;
-            System.out.println(primeP.toString(RADIX) + " is not a prime");
-        }
-        if (!primeQ.isProbablePrime(PRIME_CERTAINITY)) {
-            isValid = false;
-            System.out.println(primeP.toString(RADIX) + " is not a prime");
-        }
-        if (!primeP.multiply(primeQ).equals(modulus)) {
-            isValid = false;
-            System.out.println("Modulus " + modulus.toString(RADIX) + " has not factors p a q");
-        }
-        BigInteger phi = modulus.subtract(primeP).subtract(primeQ).add(BigInteger.ONE);
-        if (!phi.gcd(exponent).equals(BigInteger.ONE)) {
-            isValid = false;
-            System.out.println("Exponent " + exponent.toString(RADIX)
-                    + " is not coprime to phi of " + modulus.toString(RADIX));
-        }
-        if (isValid) {
-            validKeyCount++;
-        }
-    }
-
-    private static void checkPrimeDifference() {
-        BigInteger difference = primeP.subtract(primeQ).abs();
+    private static void checkPrimeDifference(Params params) {
+        BigInteger difference = params.getPrimeDifference();
         if (minPrimeDifference == null || minPrimeDifference.compareTo(difference) > 0) {
             minPrimeDifference = difference;
         }
     }
 
-    private static void checkPrimeUniqueness() {
-        if (!primes.add(primeP)) {
+    private static void checkPrimeUniqueness(Params params) {
+        if (!primes.add(params.getP())) {
             duplicitKeyCount++;
-            System.out.println("Prime " + primeP + " is duplicit!");
+            System.out.println("Prime " + params.getP() + " is duplicit!");
         }
-        if (!primes.add(primeQ)) {
+        if (!primes.add(params.getQ())) {
             duplicitKeyCount++;
-            System.out.println("Prime " + primeQ + " is duplicit!");
+            System.out.println("Prime " + params.getQ() + " is duplicit!");
         }
     }
 
-    private static void checkPrivateExponent() {
-        BigInteger phi = modulus.subtract(primeP).subtract(primeQ).add(BigInteger.ONE);
-        BigInteger privateExponent = exponent.modInverse(phi);
-        if (minPrivateExponent == null || minPrivateExponent.compareTo(privateExponent) > 0) {
-            minPrivateExponent = privateExponent;
+    private static void checkPrivateExponent(Params params) {
+        BigInteger exponent = params.getPrivateExponent();
+        if (minPrivateExponent == null || minPrivateExponent.compareTo(exponent) > 0) {
+            minPrivateExponent = exponent;
         }
-    }
-
-    private static void checkPrimeStrength() {
-        BigInteger primeMinusOne = primeP.subtract(BigInteger.ONE);
-        checkSmoothness(primeMinusOne);
-        primeMinusOne = primeQ.subtract(BigInteger.ONE);
-        checkSmoothness(primeMinusOne);
     }
 
     private static void checkSmoothness(BigInteger n) {
@@ -297,58 +265,43 @@ public class KeyCheck {
         return smallPrimes;
     }
 
-    private static void checkTurningPoints() {
-        if (prevPrimeP == null) {
-            return;
-        }
-        if (prevPrimeQ.compareTo(prevPrimeP) < 0 && prevPrimeQ.compareTo(primeP) < 0) {
-            turningPointCount++;
-        } else if (prevPrimeQ.compareTo(prevPrimeP) > 0 && prevPrimeQ.compareTo(primeP) > 0) {
-            turningPointCount++;
-        }
-        if (primeP.compareTo(prevPrimeQ) < 0 && primeP.compareTo(primeQ) < 0) {
-            turningPointCount++;
-        } else if (primeP.compareTo(prevPrimeQ) > 0 && primeP.compareTo(primeQ) > 0) {
-            turningPointCount++;
-        }
-        // check for primes p and q separately
-        if (prevPrevPrimeP == null) {
-            return;
-        }
-        if (prevPrimeP.compareTo(prevPrevPrimeP) < 0 && prevPrimeP.compareTo(primeP) < 0) {
-            turningPointCountP++;
-        } else if (prevPrimeP.compareTo(prevPrevPrimeP) > 0 && prevPrimeP.compareTo(primeP) > 0) {
-            turningPointCountP++;
-        }
-        if (prevPrimeQ.compareTo(prevPrevPrimeQ) < 0 && prevPrimeQ.compareTo(primeQ) < 0) {
-            turningPointCountQ++;
-        } else if (prevPrimeQ.compareTo(prevPrevPrimeQ) > 0 && prevPrimeQ.compareTo(primeQ) > 0) {
-            turningPointCountQ++;
-        }
+    private static void checkTurningPoints(Params params) {
+        turningPointCount += getTurningPoint(prevPrimeP, prevPrimeQ, params.getP());
+        turningPointCount += getTurningPoint(prevPrimeQ, params.getP(), params.getQ());
+        turningPointCountP += getTurningPoint(prevPrevPrimeP, prevPrimeP, params.getP());
+        turningPointCountQ += getTurningPoint(prevPrevPrimeQ, prevPrimeQ, params.getQ());
     }
 
+    private static int getTurningPoint(BigInteger a, BigInteger b, BigInteger c) {
+        if (a == null) {
+            return 0;
+        }
+        int abComparison = a.compareTo(b);
+        int bcComparison = b.compareTo(c);
+        return abComparison * bcComparison < 0 ? 1 : 0;
+    }
+    
     private static double standardizedTurningPoints(long y, long n) {
         double numerator = y - 2 * (n - 2) / 3.0;
         double denominator = Math.sqrt((16 * n - 29) / 90.0);
         return numerator / denominator;
     }
 
-    private static void checkTrend() {
-        if (prevPrimeQ != null && prevPrimeQ.compareTo(primeP) < 0) {
-            positiveDifferenceCount++;
-        }
-        if (primeP.compareTo(primeQ) < 0) {
-            positiveDifferenceCount++;
-        }
-        primeDifferenceSignumSum += primeP.compareTo(primeQ);
-        if (prevPrimeP != null && prevPrimeP.compareTo(primeP) < 0) {
-            positiveDifferenceCountP++;
-        }
-        if (prevPrimeQ != null && prevPrimeQ.compareTo(primeQ) < 0) {
-            positiveDifferenceCountQ++;
-        }
+    private static void checkTrend(Params params) {
+        positiveDifferenceCount += getPositiveDifference(prevPrimeQ, params.getP());
+        positiveDifferenceCount += getPositiveDifference(params.getP(), params.getQ());
+        primeDifferenceSignumSum += params.getP().compareTo(params.getQ());
+        positiveDifferenceCountP += getPositiveDifference(prevPrimeP, params.getP());
+        positiveDifferenceCountQ += getPositiveDifference(prevPrimeQ, params.getQ());
     }
 
+    private static int getPositiveDifference(BigInteger a, BigInteger b) {
+        if (a != null && a.compareTo(b) < 0) {
+            return 1;
+        }
+        return 0;
+    }
+    
     private static double standardizedPositiveDifference(long y, long n) {
         double numerator = y - (n - 1) / 2.0;
         double denominator = Math.sqrt((n + 1) / 12.0);
