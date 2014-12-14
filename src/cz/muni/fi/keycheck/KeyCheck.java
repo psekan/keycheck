@@ -19,11 +19,12 @@ import java.util.Set;
  */
 public class KeyCheck {
 
-    private static final boolean CHECK_VALIDITY = true;
-    private static final boolean CHECK_PRIME_DIFFERENCE = true;
-    private static final boolean CHECK_PRIME_UNIQUENESS = true;
-    private static final boolean CHECK_PRiVATE_EXPONENT = true;
-    private static final boolean CHECK_PRIME_STRENGTH = true;
+    private static final boolean CHECK_VALIDITY = false;
+    private static final boolean CHECK_PRIME_DIFFERENCE = false;
+    private static final boolean CHECK_PRIME_UNIQUENESS = false;
+    private static final boolean CHECK_PRiVATE_EXPONENT = false;
+    private static final boolean CHECK_PRIME_STRENGTH = false;
+    private static final boolean CHECK_ORDER_RANDOMNESS = true;
 
     private static final int RADIX = 10;
     private static final int PRIME_CERTAINITY = 40;
@@ -34,6 +35,10 @@ public class KeyCheck {
     private static BigInteger modulus;
     private static BigInteger primeP;
     private static BigInteger primeQ;
+    private static BigInteger prevPrimeP;
+    private static BigInteger prevPrimeQ;
+    private static BigInteger prevPrevPrimeP;
+    private static BigInteger prevPrevPrimeQ;
     private static boolean publicKeyLoaded = false;
 
     private static long startTime;
@@ -44,12 +49,20 @@ public class KeyCheck {
     private static BigInteger minPrimeDifference = null;
     private static Set<BigInteger> primes = new HashSet<>();
     private static BigInteger minPrivateExponent = null;
+
     private static List<BigInteger> primesUnderBound = getPrimesUnder(SMOOTH_BOUND);
     private static long smoothNumberCount = 0;
     private static long factoredNumberCount = 0;
-    private static long undividedNumberCount = 0;
     private static Map<Integer, Long> smallFactorCounts = new HashMap<>();
     private static Map<Integer, Long> smoothPartLengths = new HashMap<>();
+
+    private static long turningPointCount = 0;
+    private static long turningPointCountP = 0;
+    private static long turningPointCountQ = 0;
+    private static long positiveDifferenceCount = 0;
+    private static long positiveDifferenceCountP = 0;
+    private static long positiveDifferenceCountQ = 0;
+    private static long primeDifferenceSignumSum = 0;
 
     /**
      * @param args the command line arguments
@@ -59,12 +72,6 @@ public class KeyCheck {
             System.out.println("specify file name(s)");
             return;
         }
-        /*Random r = new SecureRandom();
-         for (int i = 0; i < 1000; i++) {
-         BigInteger n = new BigInteger(512, r);
-         checkSmoothness(n);
-         }
-        printStats();*/
         try {
             startTime = System.nanoTime();
             for (String filename : args) {
@@ -122,7 +129,11 @@ public class KeyCheck {
         if (values.length != 2) {
             throw new IOException("Private key " + value + "  not composed from 2 values");
         }
+        prevPrevPrimeP = prevPrimeP;
+        prevPrimeP = primeP;
         primeP = values[0];
+        prevPrevPrimeQ = prevPrimeQ;
+        prevPrimeQ = primeQ;
         primeQ = values[1];
         process();
     }
@@ -163,6 +174,10 @@ public class KeyCheck {
         }
         if (CHECK_PRIME_STRENGTH) {
             checkPrimeStrength();
+        }
+        if (CHECK_ORDER_RANDOMNESS) {
+            checkTurningPoints();
+            checkTrend();
         }
         keyCount++;
         publicKeyLoaded = false;
@@ -247,9 +262,6 @@ public class KeyCheck {
         incrementMap(smallFactorCounts, nSmallFactors);
         incrementMap(smoothPartLengths, smoothPart.bitLength());
 
-        if (nSmallFactors == 0) {
-            undividedNumberCount++;
-        }
         if (n.equals(BigInteger.ONE)) {
             smoothNumberCount++;
         }
@@ -285,6 +297,64 @@ public class KeyCheck {
         return smallPrimes;
     }
 
+    private static void checkTurningPoints() {
+        if (prevPrimeP == null) {
+            return;
+        }
+        if (prevPrimeQ.compareTo(prevPrimeP) < 0 && prevPrimeQ.compareTo(primeP) < 0) {
+            turningPointCount++;
+        } else if (prevPrimeQ.compareTo(prevPrimeP) > 0 && prevPrimeQ.compareTo(primeP) > 0) {
+            turningPointCount++;
+        }
+        if (primeP.compareTo(prevPrimeQ) < 0 && primeP.compareTo(primeQ) < 0) {
+            turningPointCount++;
+        } else if (primeP.compareTo(prevPrimeQ) > 0 && primeP.compareTo(primeQ) > 0) {
+            turningPointCount++;
+        }
+        // check for primes p and q separately
+        if (prevPrevPrimeP == null) {
+            return;
+        }
+        if (prevPrimeP.compareTo(prevPrevPrimeP) < 0 && prevPrimeP.compareTo(primeP) < 0) {
+            turningPointCountP++;
+        } else if (prevPrimeP.compareTo(prevPrevPrimeP) > 0 && prevPrimeP.compareTo(primeP) > 0) {
+            turningPointCountP++;
+        }
+        if (prevPrimeQ.compareTo(prevPrevPrimeQ) < 0 && prevPrimeQ.compareTo(primeQ) < 0) {
+            turningPointCountQ++;
+        } else if (prevPrimeQ.compareTo(prevPrevPrimeQ) > 0 && prevPrimeQ.compareTo(primeQ) > 0) {
+            turningPointCountQ++;
+        }
+    }
+
+    private static double standardizedTurningPoints(long y, long n) {
+        double numerator = y - 2 * (n - 2) / 3.0;
+        double denominator = Math.sqrt((16 * n - 29) / 90.0);
+        return numerator / denominator;
+    }
+
+    private static void checkTrend() {
+        if (prevPrimeQ != null && prevPrimeQ.compareTo(primeP) < 0) {
+            positiveDifferenceCount++;
+        }
+        if (primeP.compareTo(primeQ) < 0) {
+            positiveDifferenceCount++;
+        }
+        primeDifferenceSignumSum += primeP.compareTo(primeQ);
+        if (prevPrimeP != null && prevPrimeP.compareTo(primeP) < 0) {
+            positiveDifferenceCountP++;
+        }
+        if (prevPrimeQ != null && prevPrimeQ.compareTo(primeQ) < 0) {
+            positiveDifferenceCountQ++;
+        }
+    }
+
+    private static double standardizedPositiveDifference(long y, long n) {
+        double numerator = y - (n - 1) / 2.0;
+        double denominator = Math.sqrt((n + 1) / 12.0);
+        return numerator / denominator;
+    }
+
     private static void printStats() {
         System.out.println();
         long elapsedTime = (System.nanoTime() - startTime) / 1000000;
@@ -316,8 +386,30 @@ public class KeyCheck {
                     + " of all (p-1) factors less than " + SMOOTH_BOUND);
             printMapChart(smoothPartLengths, keyCount * 2, 300);
             System.out.println(smoothNumberCount + " (p-1) numbers are " + SMOOTH_BOUND + "-smooth, "
-                    + factoredNumberCount + " have only one bigger factor, "
-                    + undividedNumberCount + " have no factors under " + SMOOTH_BOUND);
+                    + factoredNumberCount + " have only one bigger factor");
+        }
+        if (CHECK_ORDER_RANDOMNESS) {
+            System.out.println("There are " + turningPointCountP + " and " + turningPointCountQ
+                    + " turning points in the prime sequence for p and q, standardized statistics is "
+                    + standardizedTurningPoints(turningPointCountP, keyCount) + " and "
+                    + standardizedTurningPoints(turningPointCountQ, keyCount)
+            );
+            System.out.println("There are " + positiveDifferenceCountP + " and " + positiveDifferenceCountQ
+                    + " positive differences in the prime sequence for p and q, standardized statistics is "
+                    + standardizedPositiveDifference(positiveDifferenceCountP, keyCount) + " and "
+                    + standardizedPositiveDifference(positiveDifferenceCountQ, keyCount)
+            );
+            if (primeDifferenceSignumSum == keyCount || -primeDifferenceSignumSum == keyCount) {
+                System.out.println("Primes p and q are ordered, overall statistics not determined");
+            } else {
+                System.out.println("Primes p and q are not ordered (sum of signums of differences is "
+                        + primeDifferenceSignumSum + "), there are overall "
+                        + turningPointCount + " turning points, standardized "
+                        + standardizedTurningPoints(turningPointCount, 2 * keyCount)
+                        + ", and " + positiveDifferenceCount + " positive differences, standardized "
+                        + standardizedPositiveDifference(positiveDifferenceCount, 2 * keyCount)
+                );
+            }
         }
     }
 
