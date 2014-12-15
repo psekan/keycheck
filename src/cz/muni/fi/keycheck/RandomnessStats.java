@@ -6,8 +6,9 @@ import java.math.BigInteger;
  *
  * @author David Formanek
  */
-public class RandomnessStats {
+public class RandomnessStats implements Stats {
 
+    private long keyCount = 0;
     private BigInteger prevP;
     private BigInteger prevQ;
     private BigInteger prevPrevP;
@@ -52,13 +53,15 @@ public class RandomnessStats {
         this.prevPrevQ = prevPrevQ;
     }
 
-    void process(Params params) {
+    @Override
+    public void process(Params params) {
         checkTurningPoints(params);
         checkTrend(params);
         prevPrevP = prevP;
         prevP = params.getP();
         prevPrevQ = prevQ;
         prevQ = params.getQ();
+        keyCount++;
     }
 
     private void checkTurningPoints(Params params) {
@@ -104,7 +107,8 @@ public class RandomnessStats {
         return numerator / denominator;
     }
 
-    void print(long keyCount) {
+    @Override
+    public void print() {
         System.out.println("There are " + turningPointCountP + " and " + turningPointCountQ
                 + " turning points in the prime sequence for p and q, standardized statistics is "
                 + standardizedTurningPoints(turningPointCountP, keyCount) + " and "

@@ -11,8 +11,9 @@ import java.util.Map;
  *
  * @author David Formanek
  */
-public class PrimeStrengthStats {
+public class PrimeStrengthStats implements Stats {
 
+    private long keyCount = 0;
     private int smoothBound;
     private List<BigInteger> primesUnderBound;
     private int primeCertainity;
@@ -27,9 +28,11 @@ public class PrimeStrengthStats {
         this.primeCertainity = primeCertainity;
     }
 
-    void process(Params params) {
+    @Override
+    public void process(Params params) {
         checkSmoothness(params.getP().subtract(BigInteger.ONE));
         checkSmoothness(params.getQ().subtract(BigInteger.ONE));
+        keyCount++;
     }
 
     private void checkSmoothness(BigInteger n) {
@@ -84,7 +87,8 @@ public class PrimeStrengthStats {
         return smallPrimes;
     }
 
-    void print(long keyCount) {
+    @Override
+    public void print() {
         System.out.println("Frequency distribution for count of (p-1) factors less than " + smoothBound);
         printMapChart(smallFactorCounts, keyCount * 2, 300);
         System.out.println("Frequency distribution for bitlength of product"

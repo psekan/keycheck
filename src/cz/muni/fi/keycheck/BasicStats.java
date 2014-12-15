@@ -8,34 +8,50 @@ import java.util.Set;
  *
  * @author David Formanek
  */
-class BasicStats {
+class BasicStats implements Stats {
 
-    private static final boolean CHECK_VALIDITY = false;
-    private static final boolean CHECK_PRIME_DIFFERENCE = false;
-    private static final boolean CHECK_PRIME_UNIQUENESS = false;
-    private static final boolean CHECK_PRiVATE_EXPONENT = false;
+    private static final int RADIX = 10;
 
+    private boolean checkValidity = true;
+    private boolean checkPrimeDifference = true;
+    private boolean checkPrimeUniqueness = true;
+    private boolean checkPrivateExponent = true;
+    private long keyCount = 0;
     private long validKeyCount = 0;
     private long duplicitKeyCount = 0;
     private BigInteger minPrimeDifference = null;
     private Set<BigInteger> primes = new HashSet<>();
     private BigInteger minPrivateExponent = null;
 
-    void process(Params params) {
-        if (CHECK_VALIDITY) {
+    public BasicStats(
+            boolean checkValidity,
+            boolean checkPrimeDifference,
+            boolean checkPrimeUniqueness,
+            boolean checkPrivateExponent
+    ) {
+        this.checkValidity = checkValidity;
+        this.checkPrimeDifference = checkPrimeDifference;
+        this.checkPrimeUniqueness = checkPrimeUniqueness;
+        this.checkPrivateExponent = checkPrivateExponent;
+    }
+
+    @Override
+    public void process(Params params) {
+        if (checkValidity) {
             if (params.isValid()) {
                 validKeyCount++;
             }
         }
-        if (CHECK_PRIME_DIFFERENCE) {
+        if (checkPrimeDifference) {
             checkPrimeDifference(params);
         }
-        if (CHECK_PRIME_UNIQUENESS) {
+        if (checkPrimeUniqueness) {
             checkPrimeUniqueness(params);
         }
-        if (CHECK_PRiVATE_EXPONENT) {
+        if (checkPrivateExponent) {
             checkPrivateExponent(params);
         }
+        keyCount++;
     }
 
     private void checkPrimeDifference(Params params) {
@@ -63,24 +79,25 @@ class BasicStats {
         }
     }
 
-    void print(long keyCount, int radix) {
-        if (CHECK_VALIDITY) {
+    @Override
+    public void print() {
+        if (checkValidity) {
             System.out.println(validKeyCount + " keys are valid, "
                     + (keyCount - validKeyCount) + " invalid");
         }
-        if (CHECK_PRIME_UNIQUENESS) {
+        if (checkPrimeUniqueness) {
             if (duplicitKeyCount == 0) {
                 System.out.println("All primes are unique");
             } else {
                 System.out.println(duplicitKeyCount + " primes are not unique");
             }
         }
-        if (CHECK_PRiVATE_EXPONENT && minPrivateExponent != null) {
-            System.out.println("Minimum private exponent: " + minPrivateExponent.toString(radix)
+        if (checkPrivateExponent && minPrivateExponent != null) {
+            System.out.println("Minimum private exponent: " + minPrivateExponent.toString(RADIX)
                     + " (bitlength " + minPrivateExponent.bitLength() + ")");
         }
-        if (CHECK_PRIME_DIFFERENCE && minPrimeDifference != null) {
-            System.out.println("Minimum prime difference: " + minPrimeDifference.toString(radix)
+        if (checkPrimeDifference && minPrimeDifference != null) {
+            System.out.println("Minimum prime difference: " + minPrimeDifference.toString(RADIX)
                     + " (bitlength " + minPrimeDifference.bitLength() + ")");
         }
     }
