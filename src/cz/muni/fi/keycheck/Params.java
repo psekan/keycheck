@@ -7,20 +7,21 @@ import java.math.BigInteger;
  * @author David Formanek
  */
 class Params {
+
     private static final int RADIX = 10;
     private static final int PRIME_CERTAINITY = 40;
-    
-    private static BigInteger exponent;
-    private static BigInteger modulus;
-    private static BigInteger p;
-    private static BigInteger q;
+
+    private BigInteger exponent;
+    private BigInteger modulus;
+    private BigInteger p;
+    private BigInteger q;
 
     public BigInteger getExponent() {
         return exponent;
     }
 
     public void setExponent(BigInteger exponent) {
-        Params.exponent = exponent;
+        this.exponent = exponent;
     }
 
     public BigInteger getModulus() {
@@ -28,7 +29,7 @@ class Params {
     }
 
     public void setModulus(BigInteger modulus) {
-        Params.modulus = modulus;
+        this.modulus = modulus;
     }
 
     public BigInteger getP() {
@@ -36,7 +37,7 @@ class Params {
     }
 
     public void setP(BigInteger p) {
-        Params.p = p;
+        this.p = p;
     }
 
     public BigInteger getQ() {
@@ -44,9 +45,9 @@ class Params {
     }
 
     public void setQ(BigInteger q) {
-        Params.q = q;
+        this.q = q;
     }
-    
+
     public boolean isValid() {
         boolean isValid = true;
         if (!p.isProbablePrime(PRIME_CERTAINITY)) {
@@ -69,11 +70,11 @@ class Params {
         }
         return isValid;
     }
-    
+
     public BigInteger getPrimeDifference() {
         return p.subtract(q).abs();
     }
-    
+
     public BigInteger getPrivateExponent() {
         BigInteger phi = modulus.subtract(p).subtract(q).add(BigInteger.ONE);
         return exponent.modInverse(phi);
