@@ -111,7 +111,7 @@ public class PrimeStrengthStats implements Stats {
                 System.out.print("*");
             }
             double percentage = 100 * value / (double) size;
-            System.out.format(" %d (%.3f %%)\n", value, percentage);
+            System.out.format(" %d (%.4f %%)\n", value, percentage);
         }
     }
 }

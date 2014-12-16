@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,9 +21,16 @@ public class KeyCheck {
     private static final boolean CHECK_PRiVATE_EXPONENT = true;
     private static final boolean CHECK_PRIME_STRENGTH = true;
     private static final boolean CHECK_ORDER_RANDOMNESS = true;
+    private static final boolean CHECK_DISTRIBUTION = true;
+
+    private static final boolean GENERATE_AND_TEST = true;
+    private static final int GENERATED_PRIME_BITLENGTH = 512;
+    private static final long GENERATED_KEY_COUNT = 100000;
+    private static final BigInteger EXPONENT_FOR_GENERATED = new BigInteger("65537");
 
     private static final int PRIME_CERTAINITY = 40;
     private static final int SMOOTH_BOUND = 10000;
+    private static final int BITS_FOR_INTERVAL = 5;
     private static final long STATUS_MESSAGE_AFTER = 20000000000L;
 
     private static long keyCount = 0;
@@ -38,13 +46,38 @@ public class KeyCheck {
             return;
         }
         Stats stats = init();
-        try {
+        if (GENERATE_AND_TEST) {
+            testGenerated(GENERATED_KEY_COUNT, GENERATED_PRIME_BITLENGTH, stats);
+        } else {
             for (String filename : args) {
-                load(filename, stats);
+                try {
+                    load(filename, stats);
+                } catch (IOException ex) {
+                    System.err.println("IO error: " + ex.getMessage());
+                }
             }
-            printStats(stats);
-        } catch (IOException ex) {
-            System.err.println("IO error: " + ex.getMessage());
+        }
+        printStats(stats);
+    }
+
+    private static void testGenerated(long count, int bits, Stats stats) {
+        final SecureRandom rnd = new SecureRandom();
+        for (int i = 0; i < count; i++) {
+            BigInteger p = new BigInteger(bits, 40, rnd);
+            BigInteger q = new BigInteger(bits, 40, rnd);
+            BigInteger modulus = p.multiply(q);
+            BigInteger phi = modulus.subtract(p).subtract(q).add(BigInteger.ONE);
+            if (!phi.gcd(EXPONENT_FOR_GENERATED).equals(BigInteger.ONE)) {
+                i--;
+                continue;
+            }
+            Params params = new Params();
+            params.setP(p);
+            params.setQ(q);
+            params.setExponent(EXPONENT_FOR_GENERATED);
+            params.setModulus(modulus);
+            stats.process(params);
+            showProgress();
         }
     }
 
@@ -69,9 +102,13 @@ public class KeyCheck {
             RandomnessStats randStats = new RandomnessStats();
             stats.add(randStats);
         }
+        if (CHECK_DISTRIBUTION) {
+            DistributionStats distStats = new DistributionStats(BITS_FOR_INTERVAL);
+            stats.add(distStats);
+        }
         return stats;
     }
-    
+
     private static void load(String filename, Stats stats) throws IOException {
         try (BufferedReader reader = new BufferedReader(new FileReader(filename))) {
             System.out.println("Analysing file '" + filename + "'");
