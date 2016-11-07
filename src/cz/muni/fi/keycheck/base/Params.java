@@ -108,6 +108,7 @@ public class Params {
     }
 
     public BigInteger getPrivateExponent() {
+        if (p.equals(BigInteger.ZERO) || q.equals(BigInteger.ZERO))return BigInteger.ZERO;
         BigInteger phi = modulus.subtract(p).subtract(q).add(BigInteger.ONE);
         return exponent.modInverse(phi);
     }
@@ -154,19 +155,21 @@ public class Params {
     }
 
     public void writeToFile(BufferedWriter writer, long keyNumber) throws IOException {
-        writer.write(Long.toString(keyNumber));
-        writer.write(';');
-        writer.write(modulus.toString(16).toUpperCase());
-        writer.write(';');
-        writer.write(exponent.toString(2));
-        writer.write(';');
-        writer.write(p.toString(16).toUpperCase());
-        writer.write(';');
-        writer.write(q.toString(16).toUpperCase());
-        writer.write(';');
-        writer.write(getPrivateExponent().toString(16).toUpperCase());
-        writer.write(';');
-        writer.write(Long.toString(time));
+        String line = "";
+        try {
+            line += Long.toString(keyNumber) + ";";
+            line += modulus.toString(16).toUpperCase() + ";";
+            line += exponent.toString(16) + ";";
+            line += p.toString(16).toUpperCase() + ";";
+            line += q.toString(16).toUpperCase() + ";";
+            line += getPrivateExponent().toString(16).toUpperCase() + ";";
+            line += Long.toString(time);
+        }
+        catch (Exception ex) {
+            System.err.println("Error while writing key with number '" + keyNumber + "'");
+            return;
+        }
+        writer.write(line);
         writer.newLine();
     }
 }

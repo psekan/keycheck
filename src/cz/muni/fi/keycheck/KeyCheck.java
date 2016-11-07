@@ -6,6 +6,9 @@ import cz.muni.fi.keycheck.exports.TimeExport;
 import cz.muni.fi.keycheck.helpers.ArgumentsPair;
 import cz.muni.fi.keycheck.helpers.RedirectOutput;
 import cz.muni.fi.keycheck.stats.*;
+import cz.muni.fi.keycheck.transformations.ExportToNeuralNetwork;
+import cz.muni.fi.keycheck.transformations.FormatTransform;
+import cz.muni.fi.keycheck.transformations.SplitTestSet;
 
 import java.io.*;
 import java.util.*;
@@ -21,6 +24,8 @@ public class KeyCheck extends RedirectOutput {
     //ALL POSSIBLE PARAMETERS
     private static final String PARAMETER_NEW_FORMAT = "new-format";
     private static final String PARAMETER_TRANSFORM = "transform";
+    private static final String PARAMETER_SPLIT_TEST_SET = "split-test-set";
+    private static final String PARAMETER_NEURAL_SET = "neural-set";
     private static final String PARAMETER_GENERATE = "generate";
     private static final String PARAMETER_BASE = "base";
     private static final String PARAMETER_BITS = "bits";
@@ -100,7 +105,9 @@ public class KeyCheck extends RedirectOutput {
                 PARAMETER_BYTES,
                 PARAMETER_DIFFERENCE,
                 PARAMETER_STRENGTH,
-                PARAMETER_TIME
+                PARAMETER_TIME,
+                PARAMETER_SPLIT_TEST_SET,
+                PARAMETER_NEURAL_SET
         };
         Set<String> allArgsSet = new HashSet<>(Arrays.asList(allArgs));
         ArgumentsPair argumentsPair = new ArgumentsPair();
@@ -113,6 +120,8 @@ public class KeyCheck extends RedirectOutput {
                 argumentsPair.paramsAddAll(allArgsSet);
                 argumentsPair.getParams().remove(PARAMETER_NEW_FORMAT);
                 argumentsPair.getParams().remove(PARAMETER_TRANSFORM);
+                argumentsPair.getParams().remove(PARAMETER_SPLIT_TEST_SET);
+                argumentsPair.getParams().remove(PARAMETER_NEURAL_SET);
             } else if (param.equals(PARAMETER_GENERATE)) {
                 if (args.length <= i + 1) {
                     System.err.println("Wrong -" + PARAMETER_GENERATE + " parameter. Use -" + PARAMETER_GENERATE + " keyBitLength. (keyBitLength = 512|1024)");
@@ -148,6 +157,12 @@ public class KeyCheck extends RedirectOutput {
         StatsContainer stats = new StatsContainer();
         if (params.contains(PARAMETER_TRANSFORM)) {
             stats.add(new FormatTransform());
+        }
+        if (params.contains(PARAMETER_SPLIT_TEST_SET)) {
+            stats.add(new SplitTestSet(10000));
+        }
+        if (params.contains(PARAMETER_NEURAL_SET)) {
+            stats.add(new ExportToNeuralNetwork());
         }
         if (params.contains(PARAMETER_BASE)) {
             stats.add(new CardStatsPercentageContainer<>(PrimeBaseStats.class));
@@ -259,7 +274,7 @@ public class KeyCheck extends RedirectOutput {
                 actualLineNumber++;
                 String[] tuple = line.split(";", 2);
                 if (tuple[0].equals("CPLC.ICSerialNumber")) {
-                    stats.changeCard(tuple[1]);
+                    stats.changeCard(tuple[1], numOfKeys);
                 }
 
                 tuple = line.split(":", 2);
@@ -338,7 +353,7 @@ public class KeyCheck extends RedirectOutput {
             if (pos >= 0) {
                 icsn = icsn.substring(0, pos);
             }
-            stats.changeCard(icsn);
+            stats.changeCard(icsn, numOfKeys);
             while ((line = reader.readLine()) != null) {
                 String tuple[] = line.replace(",", ";").split(";", 7);
                 if (tuple.length != 7 || !tuple[0].matches("\\d+")) {
@@ -348,7 +363,7 @@ public class KeyCheck extends RedirectOutput {
                 try {
                     Params params = new Params();
                     params.setModulus(new BigInteger(tuple[1], 16));
-                    params.setExponent(new BigInteger(tuple[2], 2));
+                    params.setExponent(new BigInteger(tuple[2], 16));
                     params.setP(new BigInteger(tuple[3], 16));
                     params.setQ(new BigInteger(tuple[4], 16));
                     params.setTime(Long.valueOf(tuple[6]));
